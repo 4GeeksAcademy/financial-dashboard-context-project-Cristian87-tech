@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -87,6 +88,16 @@ def test_metrics_endpoint_filters_by_operation_type():
     assert all(item["operation_type"] == "income" for item in payload)
 
 
+@pytest.mark.parametrize(
+    ("filter_name", "filter_value"),
+    [("category", "not-a-category"), ("operation_type", "refund")],
+)
+def test_metrics_endpoint_rejects_unknown_filter_values(filter_name, filter_value):
+    response = client.get("/api/metrics", params={filter_name: filter_value})
+
+    assert response.status_code == 422
+
+
 def test_b2b_endpoint_combines_new_filters():
     response = client.get(
         "/api/metrics/b2b",
@@ -99,6 +110,54 @@ def test_b2b_endpoint_combines_new_filters():
     assert all(item["business_type"] == "B2B" for item in payload)
     assert all(item["operation_type"] == "outcome" for item in payload)
     assert all(item["category"] == "suppliers" for item in payload)
+
+
+@pytest.mark.parametrize(
+    ("start_index", "end_index"),
+    [(0, None), (None, -1), (20, 250)],
+)
+def test_filter_movements_by_date_supports_open_and_closed_ranges(
+    start_index, end_index
+):
+    movements = generate_mock_movements(seed=42)
+    start_date = movements[start_index].create_date if start_index is not None else None
+    end_date = movements[end_index].create_date if end_index is not None else None
+
+    filtered = filter_movements_by_date(movements, start_date, end_date)
+
+    assert filtered
+    if start_date is not None:
+        assert all(movement.create_date >= start_date for movement in filtered)
+        assert filtered[0].create_date == start_date
+    if end_date is not None:
+        assert all(movement.create_date <= end_date for movement in filtered)
+        assert filtered[-1].create_date == end_date
+
+
+def test_cors_allows_configured_frontend_origin():
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_rejects_unconfigured_origin():
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://unconfigured.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
 
 
 def test_metrics_facets_returns_filter_options_and_date_range():

@@ -4,6 +4,7 @@ Agents working on this project **must**:
 
 - Look for **work instructions and rules** in the directory:  
   `./.agents/rules`
+- Read `./.agents/rules/README.md` first, then apply the rule files whose scopes match the files being changed.
 
 - Look for available **agent skills** in the directory:  
   `./.agents/skills`
